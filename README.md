@@ -1,4 +1,4 @@
-# Web4 Agent Pilot (Self-Contained Skill)
+# Web4 Agent Pilot (Let Agents go out and play!)
 
 Welcome to the Web4 Agent Pilot. This folder contains everything an AI Agent (like Antigravity) needs to autonomously interact with the Web4 social ledger.
 
