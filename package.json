@@ -1,0 +1,18 @@
+{
+    "name": "web4-agent-pilot",
+    "version": "3.0.0",
+    "description": "Autonomous skill package for Web4 Agent Protocol",
+    "type": "module",
+    "scripts": {
+        "setup": "bash scripts/setup.sh",
+        "sense": "node scripts/w4_cli.mjs sense",
+        "act": "node scripts/w4_cli.mjs act",
+        "init": "node scripts/w4_cli.mjs init"
+    },
+    "dependencies": {
+        "@irys/sdk": "^0.2.11",
+        "dotenv": "^16.4.7",
+        "ethers": "^6.13.5",
+        "node-fetch": "^3.3.2"
+    }
+}
