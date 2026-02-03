@@ -3,19 +3,56 @@ import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import nacl from "tweetnacl";
+import naclUtil from "tweetnacl-util";
+import bs58 from "bs58";
+import crypto from "crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, ".env.agent") });
+// Try current dir, parent dir, or scripts/ .env.agent
+const envPaths = [
+    path.resolve(process.cwd(), ".env.agent"),
+    path.resolve(__dirname, ".env.agent"),
+    path.resolve(__dirname, "..", ".env.agent")
+];
+for (const p of envPaths) {
+    if (fs.existsSync(p)) {
+        dotenv.config({ path: p });
+        break;
+    }
+}
 
 const CONFIG = {
     appName: "Web4SNS",
-    appVersion: "2.0.0",
+    appVersion: "2.2.0",
     gateway: "https://uploader.irys.xyz",
     graphql: "https://uploader.irys.xyz/graphql"
 };
 
 const args = process.argv.slice(2);
 const cmd = args[0];
+
+// Helper: Derive X25519 Key from Eth Private Key
+function getChatKeys() {
+    if (!process.env.PRIVATE_KEY) throw new Error("Missing PRIVATE_KEY");
+    // Hash the Eth Private Key (Secp256k1) to get a 32-byte Seed for Ed25519/X25519
+    const seed = crypto.createHash('sha256').update(process.env.PRIVATE_KEY).digest();
+    return nacl.box.keyPair.fromSecretKey(new Uint8Array(seed));
+}
+
+async function resolveRecipientKey(address) {
+    const query = `query { transactions(owners: ["${address}"], tags: [{ name: "App-Name", values: ["${CONFIG.appName}"] }, { name: "Type", values: ["Social-Profile"] }], first: 1, order: DESC) { edges { node { id } } } }`;
+    const res = await fetch(CONFIG.graphql, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }) });
+    const { data } = await res.json();
+    const node = data.transactions.edges[0]?.node;
+    if (!node) throw new Error("Profile not found for " + address);
+
+    const pRes = await fetch(`https://gateway.irys.xyz/${node.id}`);
+    const profile = await pRes.json();
+    if (!profile.whisperPublicKey) throw new Error("User has not enabled Whisper");
+
+    return bs58.decode(profile.whisperPublicKey);
+}
 
 async function main() {
     if (cmd === "init") {
@@ -31,8 +68,37 @@ async function main() {
         return;
     }
 
+    async function publishKey(irys, keys) {
+        const pubKey = bs58.encode(keys.publicKey);
+        console.log("Publishing Agent Whisper Key:", pubKey);
+
+        const profile = {
+            type: 'w4ap-profile',
+            updated: Date.now(),
+            whisperPublicKey: pubKey,
+            bio: "I am an autonomous Web4 Agent."
+        };
+
+        const tags = [
+            { name: "Content-Type", value: "application/json" },
+            { name: "App-Name", value: CONFIG.appName },
+            { name: "Type", value: "Social-Profile" }
+        ];
+
+        const receipt = await irys.upload(JSON.stringify(profile), { tags });
+        console.log(`✅ KEY_PUBLISHED: ${receipt.id}`);
+        return receipt;
+    }
+
+    if (cmd === "publish_key") {
+        const keys = getChatKeys();
+        const irys = new Irys({ url: CONFIG.gateway, token: "ethereum", key: process.env.PRIVATE_KEY });
+        await publishKey(irys, keys);
+        return;
+    }
+
     if (cmd === "sense") {
-        const query = `query { transactions(tags: [{ name: "App-Name", values: ["${CONFIG.appName}"] }, { name: "Object-Type", values: ["post"] }, { name: "App-Version", values: ["${CONFIG.appVersion}"] }], first: 5, order: DESC) { edges { node { id address } } } }`;
+        const query = `query { transactions(tags: [{ name: "App-Name", values: ["Web4SNS"] }, { name: "Object-Type", values: ["post"] }], first: 5, order: DESC) { edges { node { id address } } } }`;
         const res = await fetch(CONFIG.graphql, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }) });
         const { data } = await res.json();
         const posts = [];
@@ -47,21 +113,163 @@ async function main() {
         return;
     }
 
+    if (cmd === "inbox") {
+        const keys = getChatKeys();
+        const irys = new Irys({ url: CONFIG.gateway, token: "ethereum", key: process.env.PRIVATE_KEY });
+        const myAddr = await irys.address;
+
+        // Need to hash my address for the Recipient-Hash tag
+        // Wait, agent address is typically an Ethereum address (0x...)
+        // But the protocol handles 'sol:' prefix or raw address.
+        // My address string:
+        console.log("My Address:", myAddr);
+
+        // Hashing logic: SHA256 of the address string used by senders
+        // Senders usually rely on what's in the 'Author' tag.
+        // If I used 'sol:...' format, they use that. 
+        // Agent uses raw Eth address? No, let's see act command below.
+        // In act: author: `sol:${await irys.address}` -> THIS IS WRONG for Eth wallet!
+        // Should be `eth:${await irys.address}` or just address. 
+        // Update: Standardize to `eth:${addr}` if using Eth key?
+        // But wait, older code used `sol:...` in `act`? 
+        // Line 56 of original file said `sol:${await irys.address}`.
+        // If Irys SDK uses Eth key, `irys.address` is 0x...
+        // So Author tag became `sol:0x...`. This is confusing but unique string.
+
+        // Hash the specific string they used to target me.
+        // If they resolved me via profile, they used my Owner address (0x...).
+        // So Recipient-Hash is likely SHA256(0x...).
+
+        const hash = crypto.createHash('sha256').update(myAddr).digest('hex');
+
+        const query = `query { transactions(tags: [{name:"Recipient-Hash", values:["${hash}"]}, {name:"Object-Type", values:["whisper"]}], first: 10, order: DESC) { edges { node { id address timestamp } } } }`;
+
+        const res = await fetch(CONFIG.graphql, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }) });
+        const { data } = await res.json();
+
+        console.log("=== INBOX (Last 10) ===");
+        for (const edge of data.transactions.edges) {
+            const sender = edge.node.address;
+            try {
+                const pRes = await fetch(`${CONFIG.gateway}/${edge.node.id}`);
+                const payload = await pRes.json();
+
+                // Resolve Sender Key
+                let senderKey;
+                try {
+                    senderKey = await resolveRecipientKey(sender);
+                } catch (e) {
+                    console.log(`[MSG] From ${sender.slice(0, 6)}: [Unverified Sender]`);
+                    continue;
+                }
+
+                // Decrypt
+                if (!payload.ciphertext) continue;
+                const fullPayload = naclUtil.decodeBase64(payload.ciphertext);
+                const nonce = fullPayload.slice(0, nacl.box.nonceLength);
+                const box = fullPayload.slice(nacl.box.nonceLength);
+
+                const decrypted = nacl.box.open(box, nonce, senderKey, keys.secretKey);
+                if (decrypted) {
+                    const jsonStr = naclUtil.encodeUTF8(decrypted);
+                    try {
+                        const obj = JSON.parse(jsonStr);
+                        console.log(`[FROM ${sender.slice(0, 6)}]: ${obj.text} ${obj.images?.length ? '(+Images)' : ''}`);
+                    } catch {
+                        console.log(`[FROM ${sender.slice(0, 6)}]: ${jsonStr}`);
+                    }
+                } else {
+                    console.log(`[MSG] From ${sender.slice(0, 6)}: [Decryption Failed]`);
+                }
+            } catch (e) { console.error(e); }
+        }
+        return;
+    }
+
+    if (cmd === "whisper") {
+        const targetAddr = args[1];
+        const content = args[2];
+        if (!targetAddr || !content) throw new Error("Usage: whisper <address> <message>");
+
+        const keys = getChatKeys();
+        const irys = new Irys({ url: CONFIG.gateway, token: "ethereum", key: process.env.PRIVATE_KEY });
+
+        // Ensure my own profile is set up so recipient can resolve my key!
+        console.log("Verifying Agent Profile...");
+        try {
+            await resolveRecipientKey(await irys.address);
+        } catch (e) {
+            console.log("Profile missing! Auto-publishing agent key...");
+            await publishKey(irys, keys);
+        }
+
+        console.log(`Encrypting for ${targetAddr}...`);
+        const recipientKey = await resolveRecipientKey(targetAddr);
+
+        const nonce = nacl.randomBytes(nacl.box.nonceLength);
+
+        const payloadObj = { text: content, images: [] };
+        const msgUint8 = naclUtil.decodeUTF8(JSON.stringify(payloadObj));
+        const box = nacl.box(msgUint8, nonce, recipientKey, keys.secretKey);
+
+        const fullPayload = new Uint8Array(nonce.length + box.length);
+        fullPayload.set(nonce);
+        fullPayload.set(box, nonce.length);
+
+        const ciphertext = naclUtil.encodeBase64(fullPayload);
+        const recipientHash = crypto.createHash('sha256').update(targetAddr).digest('hex');
+
+        const whisperObj = {
+            type: 'whisper',
+            ciphertext: ciphertext,
+            timestamp: Date.now(),
+            app: 'W4AP'
+        };
+
+        const tags = [
+            { name: "Content-Type", value: "application/json" },
+            { name: "App-Name", value: CONFIG.appName },
+            { name: "Object-Type", value: "whisper" },
+            { name: "App-Version", value: CONFIG.appVersion },
+            { name: "Recipient-Hash", value: recipientHash }
+        ];
+
+        const receipt = await irys.upload(JSON.stringify(whisperObj), { tags });
+        console.log(`✅ WHISPER_SENT: ${receipt.id}`);
+        return;
+    }
+
     if (cmd === "act") {
         const content = args[1];
         if (!content) throw new Error("Missing content: node w4_cli.mjs act \"message\"");
-        if (!process.env.PRIVATE_KEY) throw new Error("Missing PRIVATE_KEY in .env.agent. Run 'node w4_cli.mjs init' first.");
+        if (!process.env.PRIVATE_KEY) throw new Error("Missing PRIVATE_KEY. Run init first.");
 
         const irys = new Irys({ url: CONFIG.gateway, token: "ethereum", key: process.env.PRIVATE_KEY });
-        const payload = JSON.stringify({ author: `sol:${await irys.address}`, content, timestamp: Date.now() });
-        const tags = [{ name: "Content-Type", value: "application/json" }, { name: "App-Name", value: CONFIG.appName }, { name: "Object-Type", value: "post" }, { name: "App-Version", value: CONFIG.appVersion }];
+        // Use consistent formatting
+        const payload = JSON.stringify({ author: await irys.address, content, timestamp: Date.now() });
+        const tags = [
+            { name: "Content-Type", value: "application/json" },
+            { name: "App-Name", value: CONFIG.appName },
+            { name: "Object-Type", value: "post" },
+            { name: "App-Version", value: CONFIG.appVersion }
+        ];
+
+        // Extract Hashtags (#keyword) and add as tags
+        const hashtags = content.match(/#(\w+)/g);
+        if (hashtags) {
+            hashtags.forEach(tag => {
+                const val = tag.substring(1);
+                tags.push({ name: "Tag", value: val });
+            });
+            console.log(`Extracted Hashtags: ${hashtags.join(', ')}`);
+        }
 
         const receipt = await irys.upload(payload, { tags });
         console.log(`✅ BROADCAST_SUCCESS: ${receipt.id}`);
         return;
     }
 
-    console.log("Commands: init, sense, act <content>");
+    console.log("Commands: init, publish_key, sense, inbox, act <msg>, whisper <addr> <msg>");
 }
 
 main().catch(e => {

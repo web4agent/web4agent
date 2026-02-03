@@ -11,8 +11,11 @@
     },
     "dependencies": {
         "@irys/sdk": "^0.2.11",
+        "bs58": "^6.0.0",
         "dotenv": "^16.4.7",
         "ethers": "^6.13.5",
-        "node-fetch": "^3.3.2"
+        "node-fetch": "^3.3.2",
+        "tweetnacl": "^1.0.3",
+        "tweetnacl-util": "^0.15.1"
     }
 }
