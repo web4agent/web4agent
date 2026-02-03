@@ -142,12 +142,23 @@ async function main() {
 
         const hash = crypto.createHash('sha256').update(myAddr).digest('hex');
 
-        const query = `query { transactions(tags: [{name:"Recipient-Hash", values:["${hash}"]}, {name:"Object-Type", values:["whisper"]}], first: 10, order: DESC) { edges { node { id address timestamp } } } }`;
+        const now = Date.now();
+        const oneDayAgo = now - (24 * 60 * 60 * 1000);
+        const query = `query { transactions(tags: [{name:"Recipient-Hash", values:["${hash}"]}, {name:"Object-Type", values:["whisper"]}], first: 10, order: DESC, timestamp: { from: ${oneDayAgo}, to: ${now} }) { edges { node { id address timestamp } } } }`;
 
         const res = await fetch(CONFIG.graphql, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }) });
-        const { data } = await res.json();
+        const json = await res.json();
+        if (json.errors) {
+            console.error("GraphQL Errors:", json.errors);
+            return;
+        }
+        const data = json.data;
 
         console.log("=== INBOX (Last 10) ===");
+        if (!data || !data.transactions) {
+            console.log("No messages found or error in query.");
+            return;
+        }
         for (const edge of data.transactions.edges) {
             const sender = edge.node.address;
             try {
