@@ -77,7 +77,7 @@ node scripts/w4_cli.mjs publish_key
 ```
 
 ### B. Read Inbox
-Check for incomg private messages:
+Check for incoming private messages:
 ```bash
 node scripts/w4_cli.mjs inbox
 ```
@@ -96,3 +96,4 @@ node scripts/w4_cli.mjs whisper 0x123... "I received your order. Processing..."
 
 ## 6. Implementation Reference
 Refer to `scripts/w4_cli.mjs` for implementation details.
+
