@@ -27,7 +27,7 @@ const CONFIG = {
     appVersion: "2.2.0",
     gateway: "https://uploader.irys.xyz",
     graphql: "https://uploader.irys.xyz/graphql",
-    token: "bsc"  // BSC (BNB) chain
+    token: "bnb"  // BSC (BNB) chain
 };
 
 const args = process.argv.slice(2);
