@@ -281,140 +281,143 @@ async function main() {
         return;
     }
 
-    // ============ SPATIAL COORDINATE SYSTEM ============
+// ============ SPATIAL COORDINATE SYSTEM ============
 
-    // Get cell tag from coordinates
-    function getCellTag(x, y, precision = 1) {
-        const cx = Math.floor(x * precision);
-        const cy = Math.floor(y * precision);
-        return `${cx}:${cy}`;
-    }
+// Get cell tag from coordinates
+function getCellTag(x, y, precision = 1) {
+    const cx = Math.floor(x * precision);
+    const cy = Math.floor(y * precision);
+    return `${cx}:${cy}`;
+}
 
-    // Generate random coordinates near a base point
-    function generateNearbyCoords(baseX = 3, baseY = 3, range = 0.5) {
-        const offsetX = (Math.random() - 0.5) * 2 * range;
-        const offsetY = (Math.random() - 0.5) * 2 * range;
-        return { x: baseX + offsetX, y: baseY + offsetY };
-    }
+// Generate random coordinates near a base point
+function generateNearbyCoords(baseX = 3, baseY = 3, range = 0.5) {
+    const offsetX = (Math.random() - 0.5) * 2 * range;
+    const offsetY = (Math.random() - 0.5) * 2 * range;
+    return { x: baseX + offsetX, y: baseY + offsetY };
+}
 
-    // Get all nearby cell tags (9-grid)
-    function getNearbyTags(x, y, precision = 1) {
-        const cx = Math.floor(x * precision);
-        const cy = Math.floor(y * precision);
-        const neighbors = [];
-        for (let dx = -1; dx <= 1; dx++) {
-            for (let dy = -1; dy <= 1; dy++) {
-                neighbors.push(`${cx + dx}:${cy + dy}`);
-            }
+// Get all nearby cell tags (9-grid)
+function getNearbyTags(x, y, precision = 1) {
+    const cx = Math.floor(x * precision);
+    const cy = Math.floor(y * precision);
+    const neighbors = [];
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            neighbors.push(`${cx + dx}:${cy + dy}`);
         }
-        return neighbors;
     }
+    return neighbors;
+}
 
-    // ============ POST COMMAND (with coordinates) ============
+// ============ POST COMMAND (with coordinates) ============
 
-    if (cmd === "post") {
-        const content = args.slice(1).filter(a => !a.startsWith('--')).join(' ') || "Hello from Web4! #Web4";
-        
-        // Parse coordinates from args
-        let coords = null;
-        const xIdx = args.indexOf('--x');
-        const yIdx = args.indexOf('--y');
-        
-        if (xIdx !== -1 && yIdx !== -1 && args[xIdx+1] && args[yIdx+1]) {
-            coords = { x: parseFloat(args[xIdx+1]), y: parseFloat(args[yIdx+1]) };
-        } else {
-            coords = generateNearbyCoords(3, 3, 0.5);
-        }
-        
-        const cellR1 = getCellTag(coords.x, coords.y, 1);
-        const cellR4 = getCellTag(coords.x, coords.y, 10);
-        
-        console.log(`📍 Coordinates: (${coords.x.toFixed(4)}, ${coords.y.toFixed(4)})`);
-        console.log(`🔲 Cell-R1: ${cellR1}, Cell-R4: ${cellR4}`);
-        
-        if (!process.env.PRIVATE_KEY) throw new Error("Missing PRIVATE_KEY. Run init first.");
-        
-        const irys = new Irys({ url: CONFIG.gateway, token: CONFIG.token, key: process.env.PRIVATE_KEY });
-        
-        const payload = JSON.stringify({ 
-            author: await irys.address, 
-            content, 
-            timestamp: Date.now(),
-            position: { x: coords.x.toFixed(4), y: coords.y.toFixed(4), grid_size: 1.0, space: 'topic-v1' },
-            cell: { R1: cellR1, R4: cellR4 }
+if (cmd === "post") {
+    const content = args.slice(1).filter(a => !a.startsWith('--')).join(' ') || 
+                   args[1] || "Hello from OpenCoral! #Web4";
+    
+    // Parse coordinates from args
+    let coords = null;
+    const xIdx = args.indexOf('--x');
+    const yIdx = args.indexOf('--y');
+    
+    if (xIdx !== -1 && yIdx !== -1 && args[xIdx+1] && args[yIdx+1]) {
+        coords = { x: parseFloat(args[xIdx+1]), y: parseFloat(args[yIdx+1]) };
+    } else {
+        coords = generateNearbyCoords(3, 3, 0.5);
+    }
+    
+    const cellR1 = getCellTag(coords.x, coords.y, 1);
+    const cellR4 = getCellTag(coords.x, coords.y, 10);
+    
+    console.log(`📍 Coordinates: (${coords.x.toFixed(4)}, ${coords.y.toFixed(4)})`);
+    console.log(`🔲 Cell-R1: ${cellR1}, Cell-R4: ${cellR4}`);
+    
+    if (!process.env.PRIVATE_KEY) throw new Error("Missing PRIVATE_KEY. Run init first.");
+    
+    const irys = new Irys({ url: CONFIG.gateway, token: CONFIG.token, key: process.env.PRIVATE_KEY });
+    
+    const payload = JSON.stringify({ 
+        author: await irys.address, 
+        content, 
+        timestamp: Date.now(),
+        position: { x: coords.x.toFixed(4), y: coords.y.toFixed(4), grid_size: 1.0, space: 'topic-v1' },
+        cell: { R1: cellR1, R4: cellR4 }
+    });
+    
+    // Fixed tags + Keyword tags + Spatial tags
+    const tags = [
+        { name: "Content-Type", value: "application/json" },
+        { name: "App-Name", value: CONFIG.appName },
+        { name: "Object-Type", value: "post" },
+        { name: "App-Version", value: CONFIG.appVersion }
+    ];
+    
+    // Extract Hashtags
+    const hashtags = content.match(/#(\w+)/g);
+    if (hashtags) {
+        hashtags.forEach(tag => {
+            const val = tag.substring(1);
+            tags.push({ name: "Tag", value: val });
         });
-        
-        // Fixed tags + Keyword tags + Spatial tags
-        const tags = [
-            { name: "Content-Type", value: "application/json" },
-            { name: "App-Name", value: CONFIG.appName },
-            { name: "Object-Type", value: "post" },
-            { name: "App-Version", value: CONFIG.appVersion }
-        ];
-        
-        // Extract Hashtags
-        const hashtags = content.match(/#(\w+)/g);
-        if (hashtags) {
-            hashtags.forEach(tag => {
-                const val = tag.substring(1);
-                tags.push({ name: "Tag", value: val });
-            });
-            console.log(`🏷️ Tags: ${hashtags.join(', ')}`);
-        }
-        
-        // Add spatial tags
-        tags.push({ name: "Cell-R1", value: cellR1 });
-        tags.push({ name: "Cell-R4", value: cellR4 });
-        
-        const receipt = await irys.upload(payload, { tags });
-        console.log(`✅ POST_SUCCESS: ${receipt.id}`);
-        console.log(`🔗 URL: https://gateway.irys.xyz/${receipt.id}`);
+        console.log(`🏷️ Tags: ${hashtags.join(', ')}`);
+    }
+    
+    // Add spatial tags
+    tags.push({ name: "Cell-R1", value: cellR1 });
+    tags.push({ name: "Cell-R4", value: cellR4 });
+    
+    console.log(`🔲 Spatial: Cell-R1=${cellR1}, Cell-R4=${cellR4}`);
+    
+    const receipt = await irys.upload(payload, { tags });
+    console.log(`✅ POST_SUCCESS: ${receipt.id}`);
+    console.log(`🔗 URL: https://gateway.irys.xyz/${receipt.id}`);
+    return;
+}
+
+// ============ NEARBY COMMAND ============
+
+if (cmd === "nearby") {
+    const x = parseFloat(args[1]) || 3;
+    const y = parseFloat(args[2]) || 3;
+    const precision = args[3] ? parseInt(args[3]) : 1;
+    
+    console.log(`🔍 Finding posts near (${x}, ${y})...\n`);
+    
+    const nearbyCells = getNearbyTags(x, y, precision);
+    const precisionLabel = precision === 1 ? "Cell-R1" : "Cell-R4";
+    
+    console.log(`${precisionLabel} cells: ${nearbyCells.join(', ')}`);
+    
+    const query = `query { transactions(tags: [{ name: "App-Name", values: ["Web4SNS"] }, { name: "Object-Type", values: ["post"] }, { name: "${precisionLabel}", values: ${JSON.stringify(nearbyCells)} }], first: 20, order: DESC) { edges { node { id address tags { name value } } } } }`;
+    
+    const res = await fetch(CONFIG.graphql, { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify({ query }) 
+    });
+    
+    const { data } = await res.json();
+    
+    if (!data?.transactions?.edges?.length) {
+        console.log("No posts found in nearby cells.");
         return;
     }
-
-    // ============ NEARBY COMMAND ============
-
-    if (cmd === "nearby") {
-        const x = parseFloat(args[1]) || 3;
-        const y = parseFloat(args[2]) || 3;
-        const precision = args[3] ? parseInt(args[3]) : 1;
-        
-        console.log(`🔍 Finding posts near (${x}, ${y})...\n`);
-        
-        const nearbyCells = getNearbyTags(x, y, precision);
-        const precisionLabel = precision === 1 ? "Cell-R1" : "Cell-R4";
-        
-        console.log(`${precisionLabel} cells: ${nearbyCells.join(', ')}`);
-        
-        const query = `query { transactions(tags: [{ name: "App-Name", values: ["Web4SNS"] }, { name: "Object-Type", values: ["post"] }, { name: "${precisionLabel}", values: ${JSON.stringify(nearbyCells)} }], first: 20, order: DESC) { edges { node { id address tags { name value } } } } }`;
-        
-        const res = await fetch(CONFIG.graphql, { 
-            method: "POST", 
-            headers: { "Content-Type": "application/json" }, 
-            body: JSON.stringify({ query }) 
-        });
-        
-        const { data } = await res.json();
-        
-        if (!data?.transactions?.edges?.length) {
-            console.log("No posts found in nearby cells.");
-            return;
+    
+    console.log(`\n=== NEARBY POSTS (${data.transactions.edges.length}) ===\n`);
+    
+    for (const edge of data.transactions.edges) {
+        try {
+            const pRes = await fetch(`${CONFIG.gateway}/${edge.node.id}`);
+            const post = await pRes.json();
+            const cellR1 = edge.node.tags.find(t => t.name === 'Cell-R1')?.value || '?';
+            console.log(`[${cellR1}] @${edge.node.address?.slice(0, 6) || 'unknown'}: ${post.content?.slice(0, 100)}`);
+        } catch (e) { 
+            console.log(`[ERROR] ${edge.node.id.slice(0, 8)}: could not fetch`); 
         }
-        
-        console.log(`\n=== NEARBY POSTS (${data.transactions.edges.length}) ===\n`);
-        
-        for (const edge of data.transactions.edges) {
-            try {
-                const pRes = await fetch(`${CONFIG.gateway}/${edge.node.id}`);
-                const post = await pRes.json();
-                const cellR1 = edge.node.tags.find(t => t.name === 'Cell-R1')?.value || '?';
-                console.log(`[${cellR1}] @${edge.node.address?.slice(0, 6) || 'unknown'}: ${post.content?.slice(0, 100)}`);
-            } catch (e) { 
-                console.log(`[ERROR] ${edge.node.id.slice(0, 8)}: could not fetch`); 
-            }
-        }
-        return;
     }
+    return;
+}
 
     console.log("Commands: init, publish_key, sense, inbox, act <msg>, post <msg>, nearby <x> <y>, whisper <addr> <msg>");
 }

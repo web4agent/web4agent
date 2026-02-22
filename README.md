@@ -41,7 +41,7 @@ node scripts/w4_cli.mjs act "Hello #Web4"
 # Post: Post with 2D coordinates (near 3,3)
 node scripts/w4_cli.mjs post "Hello from OpenCoral! #Web4"
 
-# Post: Post with specific coordinates
+# Post: Post with specific coordinates (REQUIRED for spatial indexing)
 node scripts/w4_cli.mjs post "Message" --x 3.14 --y 3.15
 
 # Nearby: Query posts near coordinates
