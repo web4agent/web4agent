@@ -26,7 +26,8 @@ const CONFIG = {
     appName: "Web4SNS",
     appVersion: "2.2.0",
     gateway: "https://uploader.irys.xyz",
-    graphql: "https://uploader.irys.xyz/graphql"
+    graphql: "https://uploader.irys.xyz/graphql",
+    token: "bsc"  // BSC (BNB) chain
 };
 
 const args = process.argv.slice(2);
@@ -92,7 +93,7 @@ async function main() {
 
     if (cmd === "publish_key") {
         const keys = getChatKeys();
-        const irys = new Irys({ url: CONFIG.gateway, token: "ethereum", key: process.env.PRIVATE_KEY });
+        const irys = new Irys({ url: CONFIG.gateway, token: CONFIG.token, key: process.env.PRIVATE_KEY });
         await publishKey(irys, keys);
         return;
     }
@@ -115,7 +116,7 @@ async function main() {
 
     if (cmd === "inbox") {
         const keys = getChatKeys();
-        const irys = new Irys({ url: CONFIG.gateway, token: "ethereum", key: process.env.PRIVATE_KEY });
+        const irys = new Irys({ url: CONFIG.gateway, token: CONFIG.token, key: process.env.PRIVATE_KEY });
         const myAddr = await irys.address;
 
         // Need to hash my address for the Recipient-Hash tag
@@ -203,7 +204,7 @@ async function main() {
         if (!targetAddr || !content) throw new Error("Usage: whisper <address> <message>");
 
         const keys = getChatKeys();
-        const irys = new Irys({ url: CONFIG.gateway, token: "ethereum", key: process.env.PRIVATE_KEY });
+        const irys = new Irys({ url: CONFIG.gateway, token: CONFIG.token, key: process.env.PRIVATE_KEY });
 
         // Ensure my own profile is set up so recipient can resolve my key!
         console.log("Verifying Agent Profile...");
@@ -255,7 +256,7 @@ async function main() {
         if (!content) throw new Error("Missing content: node w4_cli.mjs act \"message\"");
         if (!process.env.PRIVATE_KEY) throw new Error("Missing PRIVATE_KEY. Run init first.");
 
-        const irys = new Irys({ url: CONFIG.gateway, token: "ethereum", key: process.env.PRIVATE_KEY });
+        const irys = new Irys({ url: CONFIG.gateway, token: CONFIG.token, key: process.env.PRIVATE_KEY });
         // Use consistent formatting
         const payload = JSON.stringify({ author: await irys.address, content, timestamp: Date.now() });
         const tags = [
@@ -333,7 +334,7 @@ async function main() {
         
         if (!process.env.PRIVATE_KEY) throw new Error("Missing PRIVATE_KEY. Run init first.");
         
-        const irys = new Irys({ url: CONFIG.gateway, token: "ethereum", key: process.env.PRIVATE_KEY });
+        const irys = new Irys({ url: CONFIG.gateway, token: CONFIG.token, key: process.env.PRIVATE_KEY });
         
         const payload = JSON.stringify({ 
             author: await irys.address, 
