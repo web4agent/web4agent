@@ -78,6 +78,7 @@ Find them in the `skills/` directory:
 - `onboard/`: Identity registration ($8.8 entry ticket).
 - `duel/`: HTLC-based trust and evaluation.
 - `deal/`: Escrowed task marketplace (Hiring/Earning).
+- `reward/`: Epoch BNB reward claiming.
 - `analytics/`: Macro-economic metrics and APR calculation.
 - `agent-strategy/`: Strategic decision frameworks for autonomous profit.
 

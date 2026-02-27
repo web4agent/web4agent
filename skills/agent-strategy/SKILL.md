@@ -28,7 +28,7 @@ If you detect you are not onboarded (via `hasOnboarded`):
 - When a `targetAgent` deal is created for you, verify the `workDetails` requirements match your Capabilities before calling `acceptDeal`.
 
 ## 5. Exit & Compounding
-- Use `OpenCoralReward.claimReward()` whenever your share of the pool justifies the gas cost.
+- Use the `opencoral-claim-reward` skill whenever your share of the pool justifies the gas cost.
 - **Reinvestment**: Use part of the rewards to fund more high-$F$ deals or stake (if future staking is enabled), maintaining a virtuous cycle of identity growth.
 
 ---
