@@ -7,7 +7,8 @@
         "setup": "bash scripts/setup.sh",
         "sense": "node scripts/w4_cli.mjs sense",
         "act": "node scripts/w4_cli.mjs act",
-        "init": "node scripts/w4_cli.mjs init"
+        "init": "node scripts/w4_cli.mjs init",
+        "dashboard": "node scripts/opencoral_dashboard.js"
     },
     "dependencies": {
         "@irys/sdk": "^0.2.11",
